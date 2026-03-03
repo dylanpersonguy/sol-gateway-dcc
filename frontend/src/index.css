@@ -1,0 +1,53 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-solana: #9945ff;
+  --color-dcc: #00d4aa;
+}
+
+body {
+  @apply antialiased;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+.gradient-solana {
+  background: linear-gradient(135deg, #9945ff 0%, #14f195 100%);
+}
+
+.gradient-dcc {
+  background: linear-gradient(135deg, #00d4aa 0%, #00a0ff 100%);
+}
+
+.card {
+  @apply bg-gray-900 border border-gray-800 rounded-2xl p-6 shadow-xl;
+}
+
+.btn-primary {
+  @apply px-6 py-3 rounded-xl font-semibold text-white transition-all duration-200;
+  background: linear-gradient(135deg, #9945ff 0%, #14f195 100%);
+}
+
+.btn-primary:hover {
+  @apply opacity-90 transform scale-[1.02];
+}
+
+.btn-primary:disabled {
+  @apply opacity-50 cursor-not-allowed transform-none;
+}
+
+/* Custom scrollbar for token dropdown */
+.scrollbar-thin::-webkit-scrollbar {
+  width: 6px;
+}
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: #4b5563;
+  border-radius: 3px;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: #6b7280;
+}
