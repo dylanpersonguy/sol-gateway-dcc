@@ -1,0 +1,44 @@
+{
+  "name": "sol-gateway-dcc",
+  "version": "1.0.0",
+  "description": "Ultra-secure Solana ⇄ DecentralChain cross-chain bridge",
+  "private": true,
+  "workspaces": [
+    "validator",
+    "api",
+    "frontend",
+    "monitoring",
+    "tests"
+  ],
+  "scripts": {
+    "postinstall": "node scripts/postinstall-fix-dcc.js",
+    "build:solana": "anchor build",
+    "test:solana": "anchor test",
+    "validator:start": "cd validator && yarn start",
+    "api:start": "cd api && yarn start",
+    "frontend:dev": "cd frontend && yarn dev",
+    "monitoring:start": "cd monitoring && yarn start",
+    "test:e2e": "cd tests && yarn test:e2e",
+    "test:security": "cd tests && yarn test:security",
+    "lint": "eslint . --ext .ts,.tsx",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@coral-xyz/anchor": "^0.32.1",
+    "@types/bn.js": "^5.2.0",
+    "@types/chai": "^5.2.3",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^20.11.0",
+    "@typescript-eslint/eslint-plugin": "^6.19.0",
+    "@typescript-eslint/parser": "^6.19.0",
+    "chai": "^6.2.2",
+    "eslint": "^8.56.0",
+    "mocha": "^11.7.5",
+    "ts-mocha": "^11.1.0",
+    "tweetnacl": "^1.0.3",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "@decentralchain/decentralchain-transactions": "file:../../../tmp/dcc-tx-build/decentralchain-decentralchain-transactions-5.0.0.tgz"
+  }
+}

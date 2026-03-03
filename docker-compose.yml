@@ -1,0 +1,139 @@
+# Docker Compose — SOL ⇄ DCC Bridge Infrastructure
+# Local development / staging deployment
+
+version: "3.9"
+
+services:
+  # ── Validator Node ─────────────────────────────────────────
+  validator-1:
+    build:
+      context: ./validator
+      dockerfile: Dockerfile
+    env_file: .env
+    environment:
+      VALIDATOR_NODE_ID: validator-1
+      P2P_PORT: "9000"
+      HEALTH_CHECK_PORT: "8080"
+      METRICS_PORT: "9090"
+    ports:
+      - "9000:9000"   # P2P
+      - "8080:8080"   # Health
+      - "9090:9090"   # Metrics
+    volumes:
+      - validator-1-data:/app/data
+    restart: unless-stopped
+    networks:
+      - bridge-net
+
+  validator-2:
+    build:
+      context: ./validator
+      dockerfile: Dockerfile
+    env_file: .env
+    environment:
+      VALIDATOR_NODE_ID: validator-2
+      P2P_PORT: "9001"
+      HEALTH_CHECK_PORT: "8081"
+      METRICS_PORT: "9091"
+      BOOTSTRAP_PEERS: "validator-1:9000"
+    ports:
+      - "9001:9001"
+      - "8081:8081"
+      - "9091:9091"
+    volumes:
+      - validator-2-data:/app/data
+    restart: unless-stopped
+    networks:
+      - bridge-net
+    depends_on:
+      - validator-1
+
+  validator-3:
+    build:
+      context: ./validator
+      dockerfile: Dockerfile
+    env_file: .env
+    environment:
+      VALIDATOR_NODE_ID: validator-3
+      P2P_PORT: "9002"
+      HEALTH_CHECK_PORT: "8082"
+      METRICS_PORT: "9092"
+      BOOTSTRAP_PEERS: "validator-1:9000,validator-2:9001"
+    ports:
+      - "9002:9002"
+      - "8082:8082"
+      - "9092:9092"
+    volumes:
+      - validator-3-data:/app/data
+    restart: unless-stopped
+    networks:
+      - bridge-net
+    depends_on:
+      - validator-1
+      - validator-2
+
+  # ── API Server ─────────────────────────────────────────────
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    env_file: .env
+    environment:
+      API_PORT: "3000"
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    networks:
+      - bridge-net
+
+  # ── Monitor ────────────────────────────────────────────────
+  monitor:
+    build:
+      context: ./monitoring
+      dockerfile: Dockerfile
+    env_file: .env
+    environment:
+      MONITOR_PORT: "9095"
+    ports:
+      - "9095:9095"
+    restart: unless-stopped
+    networks:
+      - bridge-net
+
+  # ── Prometheus ─────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    volumes:
+      - ./infra/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    ports:
+      - "9100:9090"
+    restart: unless-stopped
+    networks:
+      - bridge-net
+
+  # ── Grafana ────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:10.4.0
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: changeme
+    volumes:
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3001:3000"
+    restart: unless-stopped
+    networks:
+      - bridge-net
+    depends_on:
+      - prometheus
+
+volumes:
+  validator-1-data:
+  validator-2-data:
+  validator-3-data:
+  prometheus-data:
+  grafana-data:
+
+networks:
+  bridge-net:
+    driver: bridge

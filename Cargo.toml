@@ -1,0 +1,17 @@
+[workspace]
+members = [
+    "programs/sol-bridge-lock"
+]
+resolver = "2"
+
+[workspace.dependencies]
+anchor-lang = "0.31.1"
+anchor-spl = "0.31.1"
+
+[workspace.metadata.anchor]
+
+[profile.release]
+overflow-checks = true
+lto = "fat"
+codegen-units = 1
+opt-level = "z"
