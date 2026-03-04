@@ -43,7 +43,7 @@ let nativeSolMint = "So11111111111111111111111111111111111111112"
 func keyAdmin() = "admin"
 func keyGuardian() = "guardian"
 func keyPaused() = "paused"
-func keyWsolAssetId() = "wsol_asset_id"
+func keyWsolAssetId() = "sol_asset_id"
 func keyTotalMinted() = "total_minted"
 func keyTotalBurned() = "total_burned"
 func keyGlobalNonce() = "global_nonce"
@@ -63,6 +63,16 @@ func keyPendingLargeTxHeight(transferId: String) = "pending_large_height_" + tra
 func keyBurnRecord(burnId: String) = "burn_" + burnId
 func keyBurnNonce(address: String) = "burn_nonce_" + address
 
+# Timelock keys for sensitive config changes
+func keyPendingAdminTransfer() = "pending_admin_transfer"
+func keyPendingAdminTransferHeight() = "pending_admin_transfer_height"
+func keyPendingGuardianTransfer() = "pending_guardian_transfer"
+func keyPendingGuardianTransferHeight() = "pending_guardian_transfer_height"
+
+# Timelock delay in blocks (~48 hours at 1 block/min)
+let adminTransferDelayBlocks = 2880
+let guardianTransferDelayBlocks = 2880
+
 # Token registry keys — keyed by SPL mint address (base58)
 func keyTokenAssetId(splMint: String) = "token_" + splMint + "_asset_id"
 func keyTokenName(splMint: String) = "token_" + splMint + "_name"
@@ -80,6 +90,11 @@ func keyTokenTotalBurned(splMint: String) = "token_" + splMint + "_total_burned"
 func isAdmin(caller: Address) = {
     let admin = getStringValue(this, keyAdmin())
     caller.toString() == admin
+}
+
+# Validate Solana base58 recipient address format (32-44 chars, base58 charset)
+func isValidSolanaAddress(addr: String) = {
+    size(addr) >= 32 && size(addr) <= 44
 }
 
 func isGuardian(caller: Address) = {
@@ -178,6 +193,7 @@ func verifyValidatorSignatures(
 ) = {
     let count = size(signatures)
     if (count < minRequired) then throw("Insufficient signatures: " + count.toString() + " < " + minRequired.toString())
+    else if (count != size(pubkeys)) then throw("Signatures/pubkeys length mismatch")
     else {
         func verifyOne(acc: Int, idx: Int) = {
             if (idx >= count) then acc
@@ -240,8 +256,8 @@ func initialize(
     if (isDefined(getString(this, keyAdmin()))) then throw("Already initialized")
     else if (minValidators < minValidatorThreshold) then throw("Min validators too low")
     else {
-        # Issue wSOL.DCC — the wrapped native SOL asset
-        let wsolIssue = Issue("Wrapped SOL", "Wrapped SOL bridged from Solana via sol-gateway-dcc", 0, 8, true)
+        # Issue SOL.DCC — the bridged native SOL asset
+        let wsolIssue = Issue("Solana", "Solana native token (SOL) — bridged from Solana to DecentralChain via sol-gateway-dcc", 0, 8, true)
         let wsolAssetId = toBase58String(calculateAssetId(wsolIssue))
         [
             wsolIssue,
@@ -261,7 +277,7 @@ func initialize(
             IntegerEntry(keyRegisteredTokenCount(), 1),
             # Register native SOL in token registry
             StringEntry(keyTokenAssetId(nativeSolMint), wsolAssetId),
-            StringEntry(keyTokenName(nativeSolMint), "Wrapped SOL"),
+            StringEntry(keyTokenName(nativeSolMint), "SOL"),
             IntegerEntry(keyTokenSolDecimals(nativeSolMint), 9),
             IntegerEntry(keyTokenDccDecimals(nativeSolMint), 8),
             IntegerEntry(keyTokenDecimalDivisor(nativeSolMint), 10),
@@ -278,8 +294,8 @@ func initialize(
 
 # Register a new SPL token — issues a wrapped DCC asset
 # splMint:     Solana mint address (base58)
-# tokenName:   e.g. "Wrapped USDC"
-# tokenSymbol: short name for DCC Issue, e.g. "wUSDC"
+# tokenName:   e.g. "USDC"
+# tokenSymbol: short name for DCC Issue, e.g. "USDC"
 # tokenDesc:   description string
 # solDecimals: decimals on Solana (e.g. 6 for USDC)
 # dccDecimals: decimals on DCC (max 8)
@@ -319,7 +335,7 @@ func registerToken(
                 else if (diff == 10) then 10000000000
                 else throw("Decimal difference too large: " + diff.toString())
 
-            let tokenIssue = Issue(tokenSymbol, tokenDesc, 0, dccDecimals, true)
+            let tokenIssue = Issue(tokenName, tokenDesc, 0, dccDecimals, true)
             let dccAssetId = toBase58String(calculateAssetId(tokenIssue))
             [
                 tokenIssue,
@@ -409,9 +425,19 @@ func mintToken(
     else if (!isTokenEnabled(splMint)) then throw("Token is disabled: " + splMint)
     else if (amount < minMintAmount) then throw("Amount below minimum")
     else {
+        let maxSingle = match getInteger(this, keyMaxSingleMint()) {
+            case m: Int => m
+            case _ => maxSingleMint
+        }
+        if (amount > maxSingle) then throw("Single mint limit exceeded")
+        else {
         let minRequired = getMinValidators()
         let sigCount = size(signatures)
         if (sigCount < minRequired) then throw("Insufficient signatures")
+        else if (!verifyValidatorSignatures(
+            toBytes(constructMintMessage(transferId, recipient, amount, solSlot, splMint, dccChainId)),
+            signatures, pubkeys, minRequired
+        )) then throw("Invalid validator signatures")
         else {
             let (newDailyMinted, newResetHeight) = checkDailyLimit(amount)
             
@@ -453,6 +479,7 @@ func mintToken(
                 }
             }
         }
+        }
     }
 }
 
@@ -470,9 +497,19 @@ func mint(
     else if (isTransferProcessed(transferId)) then throw("Transfer already processed: " + transferId)
     else if (amount < minMintAmount) then throw("Amount below minimum")
     else {
+        let maxSingle = match getInteger(this, keyMaxSingleMint()) {
+            case m: Int => m
+            case _ => maxSingleMint
+        }
+        if (amount > maxSingle) then throw("Single mint limit exceeded")
+        else {
         let minRequired = getMinValidators()
         let sigCount = size(signatures)
         if (sigCount < minRequired) then throw("Insufficient signatures")
+        else if (!verifyValidatorSignatures(
+            toBytes(constructLegacyMintMessage(transferId, recipient, amount, solSlot, dccChainId)),
+            signatures, pubkeys, minRequired
+        )) then throw("Invalid validator signatures")
         else {
             let (newDailyMinted, newResetHeight) = checkDailyLimit(amount)
             let wsolAssetId = getStringValue(this, keyWsolAssetId())
@@ -498,6 +535,7 @@ func mint(
                     IntegerEntry(keyDailyResetHeight(), newResetHeight)
                 ]
             }
+        }
         }
     }
 }
@@ -554,6 +592,7 @@ func executePendingMint(transferId: String) = {
 @Callable(i)
 func burnToken(solRecipient: String, splMint: String) = {
     if (isPaused()) then throw("Bridge is paused")
+    else if (!isValidSolanaAddress(solRecipient)) then throw("Invalid Solana recipient address: must be 32-44 base58 characters")
     else if (!isTokenRegistered(splMint)) then throw("Token not registered")
     else {
         let dccAssetId = getTokenDccAssetId(splMint)
@@ -595,16 +634,17 @@ func burnToken(solRecipient: String, splMint: String) = {
     }
 }
 
-# Legacy burn() — backward compat for wSOL only
+# Legacy burn() — backward compat for SOL only
 @Callable(i)
 func burn(solRecipient: String) = {
     if (isPaused()) then throw("Bridge is paused")
+    else if (!isValidSolanaAddress(solRecipient)) then throw("Invalid Solana recipient address: must be 32-44 base58 characters")
     else {
         let wsolAssetId = getStringValue(this, keyWsolAssetId())
         let payment = i.payments[0]
         
-        if (!isDefined(payment.assetId)) then throw("Must attach wSOL.DCC token")
-        else if (toBase58String(payment.assetId.value()) != wsolAssetId) then throw("Wrong token — must be wSOL.DCC")
+        if (!isDefined(payment.assetId)) then throw("Must attach SOL.DCC token")
+        else if (toBase58String(payment.assetId.value()) != wsolAssetId) then throw("Wrong token — must be SOL.DCC")
         else if (payment.amount < minMintAmount) then throw("Burn amount below minimum")
         else {
             let userNonce = match getInteger(this, keyBurnNonce(i.caller.toString())) {
@@ -698,18 +738,84 @@ func updateMaxSingleMint(newMax: Int) = {
 }
 
 @Callable(i)
-func transferAdmin(newAdmin: String) = {
+func proposeAdminTransfer(newAdmin: String) = {
     if (!isAdmin(i.caller)) then throw("Unauthorized")
+    else if (size(newAdmin) < 20) then throw("Invalid admin address")
     else {
-        [StringEntry(keyAdmin(), newAdmin)]
+        [
+            StringEntry(keyPendingAdminTransfer(), newAdmin),
+            IntegerEntry(keyPendingAdminTransferHeight(), height)
+        ]
     }
 }
 
-@Callable(i) 
-func updateGuardian(newGuardian: String) = {
+@Callable(i)
+func executeAdminTransfer() = {
+    let pendingAdmin = match getString(this, keyPendingAdminTransfer()) {
+        case s: String => s
+        case _ => throw("No pending admin transfer")
+    }
+    let proposedHeight = getIntegerValue(this, keyPendingAdminTransferHeight())
+    if (height - proposedHeight < adminTransferDelayBlocks) then
+        throw("Timelock not elapsed. Wait " + (adminTransferDelayBlocks - (height - proposedHeight)).toString() + " more blocks")
+    else {
+        [
+            StringEntry(keyAdmin(), pendingAdmin),
+            DeleteEntry(keyPendingAdminTransfer()),
+            DeleteEntry(keyPendingAdminTransferHeight())
+        ]
+    }
+}
+
+@Callable(i)
+func cancelAdminTransfer() = {
     if (!isAdmin(i.caller)) then throw("Unauthorized")
     else {
-        [StringEntry(keyGuardian(), newGuardian)]
+        [
+            DeleteEntry(keyPendingAdminTransfer()),
+            DeleteEntry(keyPendingAdminTransferHeight())
+        ]
+    }
+}
+
+@Callable(i)
+func proposeGuardianTransfer(newGuardian: String) = {
+    if (!isAdmin(i.caller)) then throw("Unauthorized")
+    else if (size(newGuardian) < 20) then throw("Invalid guardian address")
+    else {
+        [
+            StringEntry(keyPendingGuardianTransfer(), newGuardian),
+            IntegerEntry(keyPendingGuardianTransferHeight(), height)
+        ]
+    }
+}
+
+@Callable(i)
+func executeGuardianTransfer() = {
+    let pendingGuardian = match getString(this, keyPendingGuardianTransfer()) {
+        case s: String => s
+        case _ => throw("No pending guardian transfer")
+    }
+    let proposedHeight = getIntegerValue(this, keyPendingGuardianTransferHeight())
+    if (height - proposedHeight < guardianTransferDelayBlocks) then
+        throw("Timelock not elapsed. Wait " + (guardianTransferDelayBlocks - (height - proposedHeight)).toString() + " more blocks")
+    else {
+        [
+            StringEntry(keyGuardian(), pendingGuardian),
+            DeleteEntry(keyPendingGuardianTransfer()),
+            DeleteEntry(keyPendingGuardianTransferHeight())
+        ]
+    }
+}
+
+@Callable(i)
+func cancelGuardianTransfer() = {
+    if (!isAdmin(i.caller)) then throw("Unauthorized")
+    else {
+        [
+            DeleteEntry(keyPendingGuardianTransfer()),
+            DeleteEntry(keyPendingGuardianTransferHeight())
+        ]
     }
 }
 

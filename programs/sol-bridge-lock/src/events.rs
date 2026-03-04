@@ -119,3 +119,51 @@ pub struct CircuitBreakerTriggered {
     /// Timestamp
     pub timestamp: i64,
 }
+
+/// Emitted when a timelocked config change is proposed.
+#[event]
+pub struct ConfigChangeProposed {
+    /// Type of change
+    pub change_type: String,
+    /// Proposer authority
+    pub proposer: Pubkey,
+    /// When the change can be executed
+    pub execute_after: i64,
+    /// Timestamp of proposal
+    pub timestamp: i64,
+}
+
+/// Emitted when a timelocked config change is executed.
+#[event]
+pub struct ConfigChangeExecuted {
+    /// Type of change
+    pub change_type: String,
+    /// Executor
+    pub executor: Pubkey,
+    /// Timestamp of execution
+    pub timestamp: i64,
+}
+
+/// Emitted when a timelocked config change is cancelled.
+#[event]
+pub struct ConfigChangeCancelled {
+    /// Type of change
+    pub change_type: String,
+    /// Canceller authority
+    pub canceller: Pubkey,
+    /// Timestamp
+    pub timestamp: i64,
+}
+
+/// Emitted when a scheduled large withdrawal is executed.
+#[event]
+pub struct ScheduledUnlockExecuted {
+    /// Transfer ID
+    pub transfer_id: [u8; 32],
+    /// Recipient
+    pub recipient: Pubkey,
+    /// Amount
+    pub amount: u64,
+    /// Timestamp
+    pub timestamp: i64,
+}

@@ -28,6 +28,8 @@ pub struct InitializeParams {
     pub dcc_chain_id: u32,
     /// Solana chain ID
     pub solana_chain_id: u32,
+    /// Maximum hourly outflow (lamports) — sub-daily circuit breaker (0 = disabled)
+    pub max_hourly_outflow: u64,
 }
 
 #[derive(Accounts)]
@@ -90,7 +92,10 @@ pub fn handler(ctx: Context<Initialize>, params: InitializeParams) -> Result<()>
     config.solana_chain_id = params.solana_chain_id;
     config.bump = ctx.bumps.bridge_config;
     config.vault_bump = ctx.bumps.vault;
-    config._reserved = [0u8; 128];
+    config.max_hourly_outflow = params.max_hourly_outflow;
+    config.current_hourly_outflow = 0;
+    config.last_hourly_reset = Clock::get()?.unix_timestamp;
+    config._reserved = [0u8; 104];
 
     msg!("Bridge initialized. Authority: {}", config.authority);
     Ok(())

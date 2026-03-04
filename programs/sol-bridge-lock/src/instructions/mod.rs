@@ -6,6 +6,9 @@ pub mod emergency;
 pub mod update_config;
 pub mod register_validator;
 pub mod remove_validator;
+pub mod propose_config_change;
+pub mod execute_config_change;
+pub mod execute_scheduled_unlock;
 
 pub use initialize::*;
 pub use deposit::*;
@@ -15,3 +18,6 @@ pub use emergency::*;
 pub use update_config::*;
 pub use register_validator::*;
 pub use remove_validator::*;
+pub use propose_config_change::*;
+pub use execute_config_change::*;
+pub use execute_scheduled_unlock::*;

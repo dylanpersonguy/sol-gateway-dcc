@@ -95,4 +95,40 @@ pub mod sol_bridge_lock {
     ) -> Result<()> {
         instructions::remove_validator::handler(ctx, validator_pubkey)
     }
+
+    /// Propose a timelocked configuration change.
+    /// Sensitive operations (authority/guardian transfer, threshold changes)
+    /// require a delay before execution.
+    pub fn propose_config_change(
+        ctx: Context<ProposeConfigChange>,
+        params: ProposeConfigChangeParams,
+    ) -> Result<()> {
+        instructions::propose_config_change::handler(ctx, params)
+    }
+
+    /// Execute a timelocked configuration change after the delay has elapsed.
+    /// Anyone can call this — the change was already authorized by the proposer.
+    pub fn execute_config_change(
+        ctx: Context<ExecuteConfigChange>,
+        params: ExecuteConfigChangeParams,
+    ) -> Result<()> {
+        instructions::execute_config_change::execute_handler(ctx, params)
+    }
+
+    /// Cancel a pending timelocked configuration change.
+    /// Only the authority can cancel.
+    pub fn cancel_config_change(
+        ctx: Context<CancelConfigChange>,
+        params: CancelConfigChangeParams,
+    ) -> Result<()> {
+        instructions::execute_config_change::cancel_handler(ctx, params)
+    }
+
+    /// Execute a previously scheduled large withdrawal.
+    /// Can be called by anyone after the delay elapses.
+    pub fn execute_scheduled_unlock(
+        ctx: Context<ExecuteScheduledUnlock>,
+    ) -> Result<()> {
+        instructions::execute_scheduled_unlock::handler(ctx)
+    }
 }

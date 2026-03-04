@@ -12,8 +12,11 @@ pub struct UpdateConfigParams {
     pub large_withdrawal_delay: Option<i64>,
     pub large_withdrawal_threshold: Option<u64>,
     pub min_validators: Option<u8>,
-    pub new_authority: Option<Pubkey>,
-    pub new_guardian: Option<Pubkey>,
+    pub max_hourly_outflow: Option<u64>,
+    // NOTE: authority and guardian transfers now require timelock
+    // via propose_config_change / execute_config_change
+    // max_daily_outflow *increases* require timelock
+    // min_validators *decreases* require timelock
 }
 
 #[derive(Accounts)]
@@ -44,6 +47,11 @@ pub fn handler(ctx: Context<UpdateConfig>, params: UpdateConfigParams) -> Result
 
     if let Some(max_daily_outflow) = params.max_daily_outflow {
         require!(max_daily_outflow > 0, BridgeError::InvalidConfig);
+        // Only allow decreases here; increases require timelock
+        require!(
+            max_daily_outflow <= config.max_daily_outflow,
+            BridgeError::InvalidConfig
+        );
         config.max_daily_outflow = max_daily_outflow;
     }
 
@@ -72,18 +80,22 @@ pub fn handler(ctx: Context<UpdateConfig>, params: UpdateConfigParams) -> Result
             min_validators >= 1 && min_validators <= config.max_validators,
             BridgeError::InvalidConfig
         );
+        // Only allow increases here; decreases require timelock
+        require!(
+            min_validators >= config.min_validators,
+            BridgeError::InvalidConfig
+        );
         config.min_validators = min_validators;
     }
 
-    if let Some(new_authority) = params.new_authority {
-        config.authority = new_authority;
-        msg!("Authority transferred to: {}", new_authority);
+    if let Some(max_hourly_outflow) = params.max_hourly_outflow {
+        require!(max_hourly_outflow > 0, BridgeError::InvalidConfig);
+        config.max_hourly_outflow = max_hourly_outflow;
     }
 
-    if let Some(new_guardian) = params.new_guardian {
-        config.guardian = new_guardian;
-        msg!("Guardian transferred to: {}", new_guardian);
-    }
+    // NOTE: Authority/guardian transfers and min_validators decreases
+    // now require the propose_config_change → execute_config_change flow
+    // with mandatory timelock delays.
 
     msg!("Bridge config updated");
     Ok(())

@@ -73,8 +73,17 @@ pub struct BridgeConfig {
     /// Bump seed for the vault PDA
     pub vault_bump: u8,
 
-    /// Reserved space for future fields
-    pub _reserved: [u8; 128],
+    /// Hourly outflow cap (lamports) — sub-daily circuit breaker
+    pub max_hourly_outflow: u64,
+
+    /// Current hourly outflow (lamports)
+    pub current_hourly_outflow: u64,
+
+    /// Timestamp of last hourly reset
+    pub last_hourly_reset: i64,
+
+    /// Reserved space for future fields (reduced by 24 bytes for new fields)
+    pub _reserved: [u8; 104],
 }
 
 impl Default for BridgeConfig {
@@ -102,7 +111,10 @@ impl Default for BridgeConfig {
             solana_chain_id: 0,
             bump: 0,
             vault_bump: 0,
-            _reserved: [0u8; 128],
+            max_hourly_outflow: 0,
+            current_hourly_outflow: 0,
+            last_hourly_reset: 0,
+            _reserved: [0u8; 104],
         }
     }
 }
@@ -131,7 +143,10 @@ impl BridgeConfig {
         + 4     // solana_chain_id
         + 1     // bump
         + 1     // vault_bump
-        + 128;  // reserved
+        + 8     // max_hourly_outflow
+        + 8     // current_hourly_outflow
+        + 8     // last_hourly_reset
+        + 104;  // reserved
 }
 
 /// ═══════════════════════════════════════════════════════════════
@@ -242,6 +257,12 @@ pub struct UserState {
     /// Total deposited by this user (lifetime)
     pub total_deposited: u64,
 
+    /// Daily outflow for this user (unlocks received)
+    pub daily_outflow: u64,
+
+    /// Timestamp of last daily outflow reset for this user
+    pub last_daily_outflow_reset: i64,
+
     /// Bump seed
     pub bump: u8,
 }
@@ -251,6 +272,8 @@ impl UserState {
         + 32    // user
         + 8     // next_nonce
         + 8     // total_deposited
+        + 8     // daily_outflow
+        + 8     // last_daily_outflow_reset
         + 1;    // bump
 }
 
@@ -288,4 +311,73 @@ impl ValidatorEntry {
         + 8     // attestation_count
         + 8     // fault_count
         + 1;    // bump
+}
+
+/// ═══════════════════════════════════════════════════════════════
+/// PENDING CONFIG CHANGE — Timelock for sensitive operations
+/// ═══════════════════════════════════════════════════════════════
+
+/// Types of config changes that require a timelock delay
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq, Eq)]
+pub enum ConfigChangeType {
+    /// Transfer the authority key (48 hour delay)
+    AuthorityTransfer,
+    /// Transfer the guardian key (48 hour delay)
+    GuardianTransfer,
+    /// Decrease minimum validators threshold (48 hour delay)
+    MinValidatorsDecrease,
+    /// Increase max daily outflow (24 hour delay)
+    MaxDailyOutflowIncrease,
+}
+
+/// Pending configuration change (PDA: seeds = [b"pending_config", change_type_bytes])
+/// Authority proposes a change; after the timelock delay elapses, anyone can execute.
+/// Authority can cancel at any time.
+#[account]
+pub struct PendingConfigChange {
+    /// Type of change
+    pub change_type: ConfigChangeType,
+
+    /// New value — interpretation depends on change_type:
+    ///   AuthorityTransfer / GuardianTransfer: new_pubkey (32 bytes, padded)
+    ///   MinValidatorsDecrease: new_min_validators (u8 as first byte)
+    ///   MaxDailyOutflowIncrease: new_max_daily_outflow (u64, first 8 bytes)
+    pub new_value: [u8; 32],
+
+    /// Timestamp when the change was proposed
+    pub proposed_at: i64,
+
+    /// Timestamp when the change can be executed
+    pub execute_after: i64,
+
+    /// Authority that proposed the change
+    pub proposer: Pubkey,
+
+    /// Bump seed
+    pub bump: u8,
+}
+
+impl PendingConfigChange {
+    pub const LEN: usize = 8  // discriminator
+        + 1     // change_type (enum variant)
+        + 32    // new_value
+        + 8     // proposed_at
+        + 8     // execute_after
+        + 32    // proposer
+        + 1;    // bump
+
+    /// Minimum timelock delays in seconds
+    pub const AUTHORITY_TRANSFER_DELAY: i64 = 48 * 3600;  // 48 hours
+    pub const GUARDIAN_TRANSFER_DELAY: i64 = 48 * 3600;    // 48 hours
+    pub const MIN_VALIDATORS_DELAY: i64 = 48 * 3600;       // 48 hours
+    pub const MAX_OUTFLOW_INCREASE_DELAY: i64 = 24 * 3600; // 24 hours
+
+    pub fn delay_for(change_type: &ConfigChangeType) -> i64 {
+        match change_type {
+            ConfigChangeType::AuthorityTransfer => Self::AUTHORITY_TRANSFER_DELAY,
+            ConfigChangeType::GuardianTransfer => Self::GUARDIAN_TRANSFER_DELAY,
+            ConfigChangeType::MinValidatorsDecrease => Self::MIN_VALIDATORS_DELAY,
+            ConfigChangeType::MaxDailyOutflowIncrease => Self::MAX_OUTFLOW_INCREASE_DELAY,
+        }
+    }
 }

@@ -98,4 +98,24 @@ pub enum BridgeError {
     /// Transfer ID does not match expected value
     #[msg("Transfer ID mismatch — computed value differs from supplied")]
     InvalidTransferId,
+
+    /// Timelock delay has not elapsed for config change
+    #[msg("Timelock delay not elapsed — config change is still pending")]
+    TimelockNotElapsed,
+
+    /// No pending config change found
+    #[msg("No pending config change to execute")]
+    NoPendingChange,
+
+    /// Per-address daily outflow limit exceeded
+    #[msg("Per-address daily outflow limit exceeded")]
+    PerAddressOutflowExceeded,
+
+    /// Hourly outflow limit exceeded
+    #[msg("Hourly outflow limit exceeded — sub-daily circuit breaker")]
+    HourlyOutflowExceeded,
+
+    /// Invalid Solana recipient address
+    #[msg("Invalid Solana recipient address format")]
+    InvalidSolanaAddress,
 }

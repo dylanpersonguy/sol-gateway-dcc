@@ -198,6 +198,24 @@ pub fn handler(ctx: Context<Unlock>, params: UnlockParams) -> Result<()> {
         BridgeError::DailyOutflowExceeded
     );
 
+    // ── CIRCUIT BREAKER: Check hourly outflow (sub-daily) ──
+    let hour_seconds: i64 = 3600;
+    if clock.unix_timestamp - config.last_hourly_reset >= hour_seconds {
+        config.current_hourly_outflow = 0;
+        config.last_hourly_reset = clock.unix_timestamp;
+    }
+
+    if config.max_hourly_outflow > 0 {
+        let new_hourly_outflow = config.current_hourly_outflow
+            .checked_add(params.amount)
+            .ok_or(BridgeError::ArithmeticOverflow)?;
+        require!(
+            new_hourly_outflow <= config.max_hourly_outflow,
+            BridgeError::HourlyOutflowExceeded
+        );
+        config.current_hourly_outflow = new_hourly_outflow;
+    }
+
     // ── GUARD: Large withdrawal delay ──
     if params.amount >= config.large_withdrawal_threshold {
         // For large withdrawals, we create the record but don't execute immediately
